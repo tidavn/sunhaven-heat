@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sunhaven Heat — an open-world crime game</title>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1526; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #eef1f5; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #hud { display: none; position: fixed; inset: 0; pointer-events: none; }
+  #wanted-flash { position: absolute; inset: 0; opacity: 0; transition: opacity 0.4s; box-shadow: inset 0 0 120px 30px rgba(255, 30, 30, 0.45); }
+  .panel { position: absolute; background: rgba(10, 14, 22, 0.72); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; padding: 8px 12px; }
+  #top-left { top: 14px; left: 14px; }
+  #stars { font-size: 26px; letter-spacing: 2px; line-height: 1; }
+  #stars .star { color: rgba(255, 255, 255, 0.25); }
+  #stars .star.lit { color: #ffd23c; text-shadow: 0 0 8px rgba(255, 210, 60, 0.8); }
+  #cash { font-size: 22px; font-weight: 700; color: #7be495; margin-top: 2px; }
+  #clock { top: 14px; right: 14px; font-size: 15px; font-weight: 600; letter-spacing: 1px; }
+  #health { top: 92px; left: 14px; width: 180px; height: 12px; padding: 0; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #2ecc71; transition: width 0.2s; }
+  #objective { top: 14px; left: 50%; transform: translateX(-50%); text-align: center; min-width: 320px; }
+  #objective-title { font-size: 15px; font-weight: 800; letter-spacing: 2px; color: #ffd23c; }
+  #objective-text { font-size: 15px; margin-top: 2px; }
+  #objective-dist { font-size: 13px; color: #aab4c0; margin-top: 2px; }
+  #mission-timer { display: none; font-size: 26px; font-weight: 800; color: #ffd23c; margin-top: 2px; }
+  #speed { bottom: 16px; left: 16px; font-size: 26px; font-weight: 800; }
+  #minimap { position: absolute; right: 14px; bottom: 14px; border: 2px solid rgba(255, 255, 255, 0.25); border-radius: 50%; background: rgba(12, 16, 24, 0.88); }
+  #toasts { position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .toast { background: rgba(10, 14, 22, 0.85); border: 1px solid rgba(255, 210, 60, 0.5); border-radius: 6px; padding: 8px 14px; font-size: 15px; }
+  .screen { display: none; position: fixed; inset: 0; align-items: center; justify-content: center; flex-direction: column; text-align: center; background: radial-gradient(ellipse at center, rgba(13, 21, 38, 0.55) 0%, rgba(13, 21, 38, 0.92) 100%); z-index: 10; }
+  .screen h1 { font-size: 64px; margin: 0; letter-spacing: 6px; color: #ffd23c; text-shadow: 0 4px 24px rgba(255, 150, 40, 0.55); }
+  .screen h2 { font-size: 34px; margin: 0 0 8px; letter-spacing: 3px; color: #ffd23c; }
+  .screen p { max-width: 560px; font-size: 17px; line-height: 1.55; color: #d5dce4; margin: 10px 0; }
+  .screen .controls { font-size: 14px; color: #aab4c0; line-height: 1.8; margin: 8px 0 18px; }
+  .screen .controls b { color: #eef1f5; }
+  button { pointer-events: auto; font-size: 17px; font-weight: 700; padding: 12px 28px; margin: 6px; border: none; border-radius: 8px; background: #ffd23c; color: #1a1405; cursor: pointer; }
+  button:hover { background: #ffe06a; }
+  button.secondary { background: rgba(255, 255, 255, 0.14); color: #eef1f5; }
+  button.secondary:hover { background: rgba(255, 255, 255, 0.24); }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Sunhaven Heat: drive and walk around Sunhaven, take cars, outrun the police and finish June Marlowe's story"></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+
+<div id="hud">
+  <div id="wanted-flash"></div>
+  <div class="panel" id="top-left">
+    <div id="stars"></div>
+    <div id="cash">$0</div>
+  </div>
+  <div class="panel" id="clock">DAY 1 · 12:00 PM</div>
+  <div class="panel" id="health"><div id="health-fill"></div></div>
+  <div class="panel" id="objective">
+    <div id="objective-title">SUNHAVEN</div>
+    <div id="objective-text"></div>
+    <div id="objective-dist"></div>
+    <div id="mission-timer"></div>
+  </div>
+  <div class="panel" id="speed">0 km/h</div>
+  <canvas id="minimap" width="200" height="200"></canvas>
+  <div id="toasts"></div>
+</div>
+
+<div class="screen" id="screen-title">
+  <h1>SUNHAVEN HEAT</h1>
+  <p>Three days. Six jobs. One way out. June Marlowe is the best getaway driver in Sunhaven — and the most wanted. Drive the city, take what you need, outrun the SPD, and finish the story.</p>
+  <div class="controls">
+    <b>W A S D</b> move / drive &nbsp;·&nbsp; <b>Shift</b> sprint &nbsp;·&nbsp; <b>E</b> steal / leave car &nbsp;·&nbsp; <b>Space</b> handbrake<br>
+    <b>F</b> punch &nbsp;·&nbsp; <b>Q</b> or click shoot (once armed) &nbsp;·&nbsp; <b>1</b> holster pistol &nbsp;·&nbsp; drag mouse to look &nbsp;·&nbsp; <b>Esc</b> pause &nbsp;·&nbsp; <b>M</b> mute
+  </div>
+  <div>
+    <button id="new-game-btn">New Game</button>
+    <button id="continue-btn" class="secondary">Continue</button>
+  </div>
+</div>
+
+<div class="screen" id="screen-pause">
+  <h2>PAUSED</h2>
+  <p>Sunhaven waits for no one — except right now.</p>
+  <div>
+    <button id="resume-btn">Resume</button>
+    <button id="pause-save-btn" class="secondary">Save Game</button>
+    <button id="pause-quit-btn" class="secondary">Quit to Title</button>
+  </div>
+</div>
+
+<div class="screen" id="screen-mission">
+  <h2 id="mission-title"></h2>
+  <p id="mission-body"></p>
+  <p id="mission-sub"></p>
+  <div>
+    <button id="mission-start-btn">Start Mission</button>
+    <button id="mission-next-btn">Next Mission</button>
+    <button id="mission-retry-btn">Retry Mission</button>
+  </div>
+</div>
+
+<div class="screen" id="screen-end">
+  <h2 id="end-title"></h2>
+  <p id="end-body"></p>
+  <div>
+    <button id="end-continue-btn">Continue</button>
+    <button id="end-title-btn" class="secondary">Quit to Title</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
